@@ -5,6 +5,7 @@ import torch
 import torch.nn.functional as F
 from datetime import datetime
 import random
+from transformers import pipeline  # ✅ Импорт в начале
 
 # === Конфигурация ===
 USE_LIGHT_MODELS = True
@@ -13,11 +14,10 @@ MAX_MEMORY_ITEMS = 10
 # === Инициализация моделей ===
 thinker = None
 embedder = None
-tokenizer = None
 models_loaded = False
 
 def load_models():
-    global thinker, embedder, tokenizer, models_loaded
+    global thinker, embedder, models_loaded
     
     if models_loaded:
         return
@@ -25,8 +25,6 @@ def load_models():
     print("🧠 Загружаю мозги для ChildAGI...")
     
     try:
-        # 🔥 Основная модель для мышления
-        from transformers import pipeline
         thinker = pipeline(
             "text-generation",
             model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
@@ -36,7 +34,6 @@ def load_models():
         )
         print("✅ Модель мышления загружена!")
         
-        # 🔥 Модель для эмбеддингов (память)
         embedder = pipeline(
             "feature-extraction", 
             model="sentence-transformers/all-MiniLM-L6-v2",
@@ -119,7 +116,6 @@ def think_deeply(situation, memories):
             "Так-так, нужно подумать..."
         ])
     
-    # Более строгий промпт
     prompt = f"""Ты - любопытный ребенок в комнате. Реши, что сделать одним действием.
 
 Ситуация: {situation}
@@ -128,16 +124,18 @@ def think_deeply(situation, memories):
 Твоя мысль (только что делать):"""
     
     try:
+        # БЕЗОПАСНОЕ использование tokenizer
+        pad_id = thinker.tokenizer.eos_token_id if hasattr(thinker, 'tokenizer') and thinker.tokenizer else None
+        
         response = thinker(
             prompt,
-            max_new_tokens=50,  # Меньше токенов = меньше бреда
-            temperature=0.5,   # Меньше случайности
+            max_new_tokens=50,
+            temperature=0.5,
             do_sample=True,
-            repetition_penalty=1.2,  # Штраф за повторения
-            pad_token_id=thinker.tokenizer.eos_token_id
+            repetition_penalty=1.2,
+            pad_token_id=pad_id
         )[0]['generated_text']
         
-        # Более агрессивная обрезка
         if "Твоя мысль" in response:
             response = response.split("Твоя мысль")[-1].strip()
         if ":" in response:
@@ -146,7 +144,10 @@ def think_deeply(situation, memories):
         return response[:100].strip()
     
     except Exception as e:
+        print(f"❌ Ошибка генерации: {e}")
         return "Думаю... что сделать?"
+
+# ... остальной код БЕЗ ИЗМЕНЕНИЙ ...
 
 def choose_action(thought):
     """Анализирует мысли и выбирает ВОЗМОЖНОЕ действие"""
